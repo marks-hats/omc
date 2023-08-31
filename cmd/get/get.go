@@ -198,11 +198,16 @@ func getNamespacedResources(resourceNamePlural string, resourceGroup string, res
 	}
 	for _, namespace := range namespaces {
 		UnstructuredItems := types.UnstructuredList{ApiVersion: "v1", Kind: "List"}
+
 		resourcePath := fmt.Sprintf("%s/namespaces/%s/%s/%s.yaml", vars.MustGatherRootPath, namespace, resourceGroup, resourceNamePlural)
 		_file, err := ioutil.ReadFile(resourcePath)
 		if err != nil {
 			resourceDir := fmt.Sprintf("%s/namespaces/%s/%s/%s", vars.MustGatherRootPath, namespace, resourceGroup, resourceNamePlural)
 			_, err = os.Stat(resourceDir)
+			if err != nil {
+				resourceDir = fmt.Sprintf("%s/namespaces/%s/%s/%s.%s", vars.MustGatherRootPath, namespace, resourceGroup, resourceNamePlural, resourceGroup)
+				_, err = os.Stat(resourceDir)
+			}
 			if err == nil {
 				resourcesFiles, _ := ioutil.ReadDir(resourceDir)
 				for _, f := range resourcesFiles {
@@ -222,6 +227,8 @@ func getNamespacedResources(resourceNamePlural string, resourceGroup string, res
 						handleObject(item)
 					}
 				}
+			} else {
+				klog.V(3).Info("INFO ", fmt.Sprintf("failed to find resources for: %s", resourceNamePlural))
 			}
 		} else {
 			if err := yaml.Unmarshal(_file, &UnstructuredItems); err != nil {

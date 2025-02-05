@@ -24,6 +24,7 @@ import (
 	"strings"
 	"slices"
 	"bytes"
+	"regexp"
 
 	goyaml "gopkg.in/yaml.v2"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -73,6 +74,8 @@ var allNamespaceBoolVar, showLabelsBoolVar bool
 var emptyslice []string
 var resourcesAndObjects [][]string
 
+var jsonRegexp = regexp.MustCompile(`^\{\.?([^{}]+)\}$|^\.?([^{}]+)$`)
+
 //go:embed known-resources.yaml
 var yamlData []byte
 
@@ -121,7 +124,7 @@ func init() {
 	GetCmd.PersistentFlags().BoolVarP(&vars.ShowLabelsBoolVar, "show-labels", "", false, "When printing, show all labels as the last column (default hide labels column)")
 	GetCmd.PersistentFlags().StringVarP(&vars.OutputStringVar, "output", "o", "", "Output format. One of: json|yaml|wide|jsonpath|custom-columns=...")
 	GetCmd.PersistentFlags().StringVarP(&vars.LabelSelectorStringVar, "selector", "l", "", "selector (label query) to filter on, supports '=', '==', and '!='.(e.g. -l key1=value1,key2=value2)")
-	GetCmd.PersistentFlags().StringVarP(&vars.SortBy, "sort-by", "", "", "JSON Path to sort on")
+	GetCmd.PersistentFlags().StringVarP(&vars.SortBy, "sort-by", "", "", "If non-empty, sort list types using this field specification. The field specification is expressed as a JSONPath expression (e.g. '{.metadata.name}').")
 }
 
 func init() {
@@ -555,6 +558,23 @@ func sortResources(list []unstructured.Unstructured, sortBy string) []unstructur
 		// no need to sort. Return original list
 		return list
 	}
+
+	// relaxed jsonpath like kubectl/oc
+	submatches := jsonRegexp.FindStringSubmatch(sortBy)
+	if submatches == nil {
+		fmt.Println("Failed to identify relaxed jsonpath, skipping")
+		return list
+	}
+	if len(submatches) != 3 {
+		fmt.Println("unexpected submatch list: ", submatches)
+		return list
+	}
+	if len(submatches[1]) != 0 {
+		sortBy = submatches[1]
+	} else {
+		sortBy = submatches[2]
+	}
+	sortBy = fmt.Sprintf("{.%s}", sortBy)
 
 	jpath := jsonpath.New("out")
 	jpath.AllowMissingKeys(false)
